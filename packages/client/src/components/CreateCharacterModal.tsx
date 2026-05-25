@@ -2,10 +2,24 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { characterApi } from '../api/client';
 
-const TRAIT_OPTIONS = ['勇敢', '狡猾', '善良', '固执', '多疑', '乐观', '悲观', '冲动', '谨慎', '傲慢', '谦逊', '热情', '冷漠', '诚实', '阴险'];
+const PRESET_TRAITS = ['勇敢', '狡猾', '善良', '固执', '多疑', '乐观', '悲观', '冲动', '谨慎', '傲慢', '谦逊', '热情', '冷漠', '诚实', '阴险'];
+
+function TraitSlider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="form-group">
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+        <span>{label}</span>
+        <span style={{ color: '#2563EB', fontWeight: 600 }}>{value}</span>
+      </div>
+      <input type="range" min="0" max="100" value={value}
+        onChange={e => onChange(parseInt(e.target.value))}
+        style={{ width: '100%' }} />
+    </div>
+  );
+}
 
 export default function CreateCharacterModal() {
-  const { world, addCharacter, setShowCreateChar, characters } = useStore();
+  const { world, addCharacter, setShowCreateChar } = useStore();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     name: '',
@@ -18,6 +32,7 @@ export default function CreateCharacterModal() {
     agreeableness: 50,
     neuroticism: 50,
     traits: [] as string[],
+    customTrait: '',
     moralAlignment: 'true-neutral',
     secrets: '',
     locationId: ''
@@ -28,6 +43,13 @@ export default function CreateCharacterModal() {
       ...f,
       traits: f.traits.includes(t) ? f.traits.filter(x => x !== t) : [...f.traits, t]
     }));
+  };
+
+  const addCustomTrait = () => {
+    const t = form.customTrait.trim();
+    if (t && !form.traits.includes(t)) {
+      setForm(f => ({ ...f, traits: [...f.traits, t], customTrait: '' }));
+    }
   };
 
   const handleSubmit = async () => {
@@ -60,21 +82,9 @@ export default function CreateCharacterModal() {
     }
   };
 
-  const Slider = ({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) => (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 2 }}>
-        <span>{label}</span>
-        <span>{value}</span>
-      </div>
-      <input type="range" min="0" max="100" value={value}
-        onChange={e => onChange(parseInt(e.target.value))}
-        style={{ width: '100%' }} />
-    </div>
-  );
-
   return (
     <div className="modal-overlay" onClick={() => setShowCreateChar(false)}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640 }}>
         <h2>创建角色</h2>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -119,21 +129,21 @@ export default function CreateCharacterModal() {
           </div>
 
           <div>
-            <h4 style={{ fontSize: 13, marginBottom: 8, color: '#7F8C8D' }}>性格特征（五维度）</h4>
-            <Slider label="开放性（好奇心）" value={form.openness} onChange={v => setForm({ ...form, openness: v })} />
-            <Slider label="尽责性（自律）" value={form.conscientiousness} onChange={v => setForm({ ...form, conscientiousness: v })} />
-            <Slider label="外向性（社交）" value={form.extraversion} onChange={v => setForm({ ...form, extraversion: v })} />
-            <Slider label="宜人性（友善）" value={form.agreeableness} onChange={v => setForm({ ...form, agreeableness: v })} />
-            <Slider label="神经质（敏感）" value={form.neuroticism} onChange={v => setForm({ ...form, neuroticism: v })} />
+            <h4 style={{ fontSize: 12, marginBottom: 8, color: '#64748B' }}>性格特征（五维度）</h4>
+            <TraitSlider label="开放性（好奇心）" value={form.openness} onChange={v => setForm({ ...form, openness: v })} />
+            <TraitSlider label="尽责性（自律）" value={form.conscientiousness} onChange={v => setForm({ ...form, conscientiousness: v })} />
+            <TraitSlider label="外向性（社交）" value={form.extraversion} onChange={v => setForm({ ...form, extraversion: v })} />
+            <TraitSlider label="宜人性（友善）" value={form.agreeableness} onChange={v => setForm({ ...form, agreeableness: v })} />
+            <TraitSlider label="神经质（敏感）" value={form.neuroticism} onChange={v => setForm({ ...form, neuroticism: v })} />
 
-            <h4 style={{ fontSize: 13, marginBottom: 8, marginTop: 16, color: '#7F8C8D' }}>性格标签</h4>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {TRAIT_OPTIONS.map(t => (
-                <span key={t} className="trait-tag"
+            <h4 style={{ fontSize: 12, marginBottom: 6, marginTop: 12, color: '#64748B' }}>性格标签</h4>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 8 }}>
+              {PRESET_TRAITS.map(t => (
+                <span key={t}
                   style={{
-                    cursor: 'pointer',
-                    background: form.traits.includes(t) ? '#7BB8E8' : '#F5F9FC',
-                    color: form.traits.includes(t) ? 'white' : '#2C3E50'
+                    padding: '2px 8px', borderRadius: 3, fontSize: 11, cursor: 'pointer',
+                    background: form.traits.includes(t) ? '#2563EB' : '#F1F5F9',
+                    color: form.traits.includes(t) ? 'white' : '#1E293B'
                   }}
                   onClick={() => toggleTrait(t)}>
                   {t}
@@ -141,7 +151,16 @@ export default function CreateCharacterModal() {
               ))}
             </div>
 
-            <div className="form-group" style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+              <input className="form-input" style={{ flex: 1, fontSize: 12 }}
+                placeholder="自定义标签..."
+                value={form.customTrait}
+                onChange={e => setForm({ ...form, customTrait: e.target.value })}
+                onKeyDown={e => e.key === 'Enter' && addCustomTrait()} />
+              <button className="btn" type="button" onClick={addCustomTrait}>添加</button>
+            </div>
+
+            <div className="form-group">
               <label>背景故事</label>
               <textarea className="form-input" value={form.backstory}
                 onChange={e => setForm({ ...form, backstory: e.target.value })}

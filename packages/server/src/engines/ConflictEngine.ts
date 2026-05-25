@@ -9,13 +9,24 @@ interface ConflictSeed {
 }
 
 export class ConflictEngine {
-  // 扫描所有角色对，检测潜在冲突
+  // 扫描所有同场景角色对，检测潜在冲突
   scan(characters: Character[]): ConflictSeed[] {
     const seeds: ConflictSeed[] = [];
-    for (let i = 0; i < characters.length; i++) {
-      for (let j = i + 1; j < characters.length; j++) {
-        const seed = this.evaluatePair(characters[i], characters[j]);
-        if (seed) seeds.push(seed);
+
+    // 按地点分组，只检测同场景的角色
+    const grouped = new Map<string, Character[]>();
+    for (const c of characters) {
+      const loc = c.currentLocation || 'unknown';
+      if (!grouped.has(loc)) grouped.set(loc, []);
+      grouped.get(loc)!.push(c);
+    }
+
+    for (const [, group] of grouped) {
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+          const seed = this.evaluatePair(group[i], group[j]);
+          if (seed) seeds.push(seed);
+        }
       }
     }
     return seeds.sort((a, b) => b.tension - a.tension);

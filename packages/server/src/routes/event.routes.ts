@@ -24,4 +24,9 @@ router.post('/manual', (req: Request, res: Response) => {
   res.json(event);
 });
 
+router.delete('/clear/:worldId', (req: Request, res: Response) => {
+  es.deleteByWorld(req.params.worldId);
+  res.json({ success: true });
+});
+
 export { router as eventRoutes };

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useCallback } from 'react';
+import { io } from 'socket.io-client';
 import { useStore } from './store';
 import { worldApi, characterApi, eventApi, simulationApi } from './api/client';
 import Dashboard from './pages/Dashboard';
@@ -11,41 +12,81 @@ import Settings from './pages/Settings';
 import CreateWorldModal from './components/CreateWorldModal';
 import CreateCharacterModal from './components/CreateCharacterModal';
 
+let socket: any = null;
+try { socket = io('/', { transports: ['websocket', 'polling'] }); } catch {};
+
 export default function App() {
   const {
     world, worlds, setWorld, setWorlds, setCharacters, setEvents,
     activeTab, setActiveTab, showCreateWorld, setShowCreateWorld,
     showCreateChar, setShowCreateChar, characters, events, isRunning,
-    clearEvents, setCurrentTick
+    clearEvents, setCurrentTick, selectedLocation
   } = useStore();
 
-  const [loading, setLoading] = useState(true);
+  // 从后端重新加载数据
+  const refreshData = useCallback(() => {
+    if (!world) return;
+    characterApi.list(world.id).then(list => {
+      if (list.length > 0 || useStore.getState().characters.length === 0) {
+        setCharacters(list);
+      }
+    });
+    eventApi.list(world.id, { limit: 200 }).then(list => setEvents(list));
+    worldApi.get(world.id).then(w => {
+      if (w) { setWorld(w); setCurrentTick(w.time.tick); }
+    });
+  }, [world?.id]);
 
+  // 初始加载——始终从服务端同步
   useEffect(() => {
     worldApi.list().then(ws => {
       setWorlds(ws);
-      if (ws.length > 0) setWorld(ws[0]);
-    }).finally(() => setLoading(false));
+      if (ws.length > 0) {
+        const currentId = useStore.getState().world?.id;
+        const stillExists = ws.find(w => w.id === currentId);
+        if (!stillExists) {
+          setWorld(ws[0]);
+        }
+      }
+    });
   }, []);
 
-  // 切换世界时加载角色和事件
+  // Socket.io 监听 tick 完成事件（自动刷新数据）
+  useEffect(() => {
+    if (!socket) return;
+    const onTickComplete = (result: any) => {
+      if (result.personalityChanges) {
+        useStore.getState().setPersonalityChanges(result.personalityChanges);
+        setTimeout(() => useStore.getState().setPersonalityChanges({}), 10000);
+      }
+      const w = useStore.getState().world;
+      if (w) {
+        eventApi.list(w.id, { limit: 200 }).then(list => useStore.getState().setEvents(list));
+        characterApi.list(w.id).then(list => useStore.getState().setCharacters(list));
+        if (result.tick) useStore.getState().setCurrentTick(result.tick);
+      }
+    };
+    socket.on('tick:complete', onTickComplete);
+    return () => { socket.off('tick:complete', onTickComplete); };
+  }, []);
+
+  // 世界切换时加载数据
   useEffect(() => {
     if (!world) return;
     characterApi.list(world.id).then(setCharacters);
-    eventApi.list(world.id, { limit: 100 }).then(setEvents);
+    eventApi.list(world.id, { limit: 200 }).then(setEvents);
     setCurrentTick(world.time.tick);
   }, [world?.id]);
 
   const handleTick = async () => {
     if (!world) return;
     const result = await simulationApi.tick(world.id);
-    setEvents([...result.events, ...events].slice(-200));
-    setCurrentTick(result.tick);
-    if (result.characterUpdates) {
-      for (const [id, data] of Object.entries(result.characterUpdates)) {
-        useStore.getState().updateCharacter(id, data as any);
-      }
+    if (result.personalityChanges) {
+      useStore.getState().setPersonalityChanges(result.personalityChanges);
+      setTimeout(() => useStore.getState().setPersonalityChanges({}), 10000);
     }
+    refreshData();
+    setCurrentTick(result.tick);
   };
 
   const handleStartAuto = async () => {
@@ -59,7 +100,9 @@ export default function App() {
     useStore.getState().setIsRunning(false);
   };
 
-  if (loading) return <div className="app-layout" style={{ alignItems: 'center', justifyContent: 'center' }}><p>加载中...</p></div>;
+  const filteredEvents = selectedLocation
+    ? events.filter(e => e.locationId === selectedLocation)
+    : events;
 
   // 没有世界时显示创建界面
   if (worlds.length === 0) {
@@ -67,8 +110,8 @@ export default function App() {
       <div className="app-layout">
         <div className="top-bar"><h1>AI 虚拟世界小说模拟器</h1></div>
         <div className="empty-state" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <h2>欢迎来到 AI 虚拟世界</h2>
-          <p>创建一个新世界，开始你的小说创作之旅</p>
+          <h2 style={{ marginBottom: 8 }}>欢迎来到 AI 虚拟世界</h2>
+          <p style={{ marginBottom: 12 }}>创建一个新世界，开始你的小说创作之旅</p>
           <button className="btn btn-primary" onClick={() => setShowCreateWorld(true)}>创建新世界</button>
         </div>
         {showCreateWorld && <CreateWorldModal />}
@@ -85,22 +128,24 @@ export default function App() {
           <span className="time-display">
             Tick {world?.time?.tick || 0} | {world?.time?.dayPeriod} | {world?.time?.season}
           </span>
-          <button className="btn" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.3)' }}
+          <button className="btn" style={{ background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}
             onClick={handleTick} disabled={isRunning}>步进</button>
           {!isRunning ? (
-            <button className="btn" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.3)' }}
+            <button className="btn" style={{ background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}
               onClick={handleStartAuto}>自动</button>
           ) : (
-            <button className="btn btn-danger" style={{ color: 'white', borderColor: 'rgba(255,255,255,0.3)' }}
+            <button className="btn" style={{ background: '#DC2626', color: 'white', border: '1px solid rgba(255,255,255,0.3)' }}
               onClick={handleStop}>停止</button>
           )}
-          <select className="form-input" style={{ width: 140, background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}
+          <select className="form-input" style={{ width: 130, background: 'rgba(255,255,255,0.12)', color: 'white', border: '1px solid rgba(255,255,255,0.15)', fontSize: 12 }}
             value={world?.id} onChange={e => {
               const w = worlds.find(x => x.id === e.target.value);
               if (w) setWorld(w);
             }}>
             {worlds.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
+          <button className="btn" style={{ background: 'transparent', color: 'white', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 8px', fontSize: 11 }}
+            onClick={refreshData}>刷新</button>
         </div>
       </div>
 
@@ -110,7 +155,8 @@ export default function App() {
           <h3>角色</h3>
           <div className="character-list">
             {characters.map(c => (
-              <div key={c.id} className="character-item">
+              <div key={c.id} className="character-item" style={{ cursor: 'pointer' }}
+                onClick={() => { useStore.getState().setSelectedCharacterId(c.id); setActiveTab('characters'); }}>
                 <div className="avatar">
                   {c.avatarUrl ? <img src={c.avatarUrl} alt={c.name} /> : c.name[0]}
                 </div>
@@ -121,16 +167,16 @@ export default function App() {
                 <div className="emotion">{c.emotionalState?.primary}</div>
               </div>
             ))}
-            <button className="btn" style={{ width: '100%', marginTop: 8 }}
-              onClick={() => useStore.getState().setShowCreateChar(true)}>+ 添加角色</button>
+            <button className="btn" style={{ width: '100%', marginTop: 6 }}
+              onClick={() => setShowCreateChar(true)}>+ 添加角色</button>
           </div>
 
           <h3>地点</h3>
           <div className="location-list">
             {world?.locations?.map(loc => (
               <div key={loc.id}
-                className={`location-item ${useStore.getState().selectedLocation === loc.id ? 'active' : ''}`}
-                onClick={() => useStore.getState().setSelectedLocation(loc.id)}>
+                className={`location-item ${selectedLocation === loc.id ? 'active' : ''}`}
+                onClick={() => useStore.getState().setSelectedLocation(loc.id === selectedLocation ? null : loc.id)}>
                 {loc.name}
               </div>
             ))}
@@ -138,13 +184,15 @@ export default function App() {
         </div>
 
         {/* 主内容 */}
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'characters' && <CharacterManager />}
-        {activeTab === 'timeline' && <Timeline />}
-        {activeTab === 'relationships' && <RelationshipGraph />}
-        {activeTab === 'world' && <WorldEditor />}
-        {activeTab === 'export' && <StoryExport />}
-        {activeTab === 'settings' && <Settings />}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {activeTab === 'dashboard' && <Dashboard />}
+          {activeTab === 'characters' && <CharacterManager />}
+          {activeTab === 'timeline' && <Timeline />}
+          {activeTab === 'relationships' && <RelationshipGraph />}
+          {activeTab === 'world' && <WorldEditor />}
+          {activeTab === 'export' && <StoryExport />}
+          {activeTab === 'settings' && <Settings />}
+        </div>
       </div>
 
       {/* 底部导航 */}

@@ -17,6 +17,7 @@ export const characterApi = {
   get: (id: string) => api.get(`/characters/${id}`).then(r => r.data),
   update: (id: string, data: any) => api.put(`/characters/${id}`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/characters/${id}`).then(r => r.data),
+  updateRelationship: (id: string, data: any) => api.post(`/characters/${id}/relationships`, data).then(r => r.data),
 };
 
 export const simulationApi = {
@@ -31,6 +32,7 @@ export const eventApi = {
   list: (worldId: string, params?: any) => api.get('/events', { params: { worldId, ...params } }).then(r => r.data),
   get: (id: string) => api.get(`/events/${id}`).then(r => r.data),
   createManual: (data: any) => api.post('/events/manual', data).then(r => r.data),
+  clear: (worldId: string) => api.delete(`/events/clear/${worldId}`).then(r => r.data),
 };
 
 export const storyApi = {

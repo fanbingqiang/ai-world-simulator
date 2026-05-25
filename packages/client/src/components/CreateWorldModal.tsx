@@ -69,15 +69,10 @@ export default function CreateWorldModal() {
         </div>
 
         <div className="form-group">
-          <label>基调</label>
-          <select className="form-input" value={form.tone}
-            onChange={e => setForm({ ...form, tone: e.target.value })}>
-            <option value="neutral">中性</option>
-            <option value="dark">黑暗</option>
-            <option value="heroic">英雄</option>
-            <option value="whimsical">奇幻</option>
-            <option value="gritty">写实</option>
-          </select>
+          <label>基调（如：黑暗、英雄、奇幻、写实）</label>
+          <input className="form-input" value={form.tone}
+            onChange={e => setForm({ ...form, tone: e.target.value })}
+            placeholder="例如：黑暗英雄史诗" />
         </div>
 
         <div className="form-group">
